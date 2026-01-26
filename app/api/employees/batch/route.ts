@@ -4,7 +4,8 @@ import dbConnect from '@/lib/db'
 import { Employee } from '@/lib/models/Employee'
 import { Partner } from '@/lib/models/Partner'
 import { authOptions } from '@/lib/auth'
-import { z } from 'zod'
+import { z, ZodError } from 'zod'
+import { formatZodError } from '@/lib/utils/helpers'
 
 const batchEmployeeSchema = z.object({
   employees: z.array(
@@ -81,8 +82,8 @@ export async function POST(req: NextRequest) {
     )
   } catch (error) {
     console.error('Error batch creating employees:', error)
-    if (error instanceof Error && error.name === 'ZodError') {
-      return NextResponse.json({ error: 'Validation error', details: error }, { status: 400 })
+    if (error instanceof ZodError) {
+      return NextResponse.json({ error: formatZodError(error) }, { status: 400 })
     }
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }

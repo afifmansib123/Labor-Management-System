@@ -4,6 +4,8 @@ import dbConnect from '@/lib/db'
 import { EmployeeLevel } from '@/lib/models/EmployeeLevel'
 import { authOptions } from '@/lib/auth'
 import { createEmployeeLevelSchema } from '@/lib/utils/validation'
+import { ZodError } from 'zod'
+import { formatZodError } from '@/lib/utils/helpers'
 
 export async function GET(req: NextRequest) {
   try {
@@ -57,8 +59,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(level, { status: 201 })
   } catch (error) {
     console.error('Error creating level:', error)
-    if (error instanceof Error && error.name === 'ZodError') {
-      return NextResponse.json({ error: 'Validation error', details: error }, { status: 400 })
+    if (error instanceof ZodError) {
+      return NextResponse.json({ error: formatZodError(error) }, { status: 400 })
     }
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }

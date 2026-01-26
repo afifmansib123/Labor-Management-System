@@ -5,6 +5,8 @@ import { Partner } from '@/lib/models/Partner'
 import { User } from '@/lib/models/User'
 import { authOptions } from '@/lib/auth'
 import { createPartnerSchema } from '@/lib/utils/validation'
+import { ZodError } from 'zod'
+import { formatZodError } from '@/lib/utils/helpers'
 
 function generatePassword(length: number = 12): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%'
@@ -93,8 +95,8 @@ export async function POST(req: NextRequest) {
     )
   } catch (error) {
     console.error('Error creating partner:', error)
-    if (error instanceof Error && error.name === 'ZodError') {
-      return NextResponse.json({ error: 'Validation error', details: error }, { status: 400 })
+    if (error instanceof ZodError) {
+      return NextResponse.json({ error: formatZodError(error) }, { status: 400 })
     }
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
