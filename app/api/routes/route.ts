@@ -32,6 +32,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    if (!session.user?.id) {
+      console.error('Session user ID is missing:', session)
+      return NextResponse.json({ error: 'Session invalid - please log out and log back in' }, { status: 401 })
+    }
+
     await dbConnect()
 
     const body = await req.json()
