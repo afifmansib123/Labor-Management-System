@@ -16,6 +16,8 @@ import {
   Route as RouteIcon,
   Filter,
   Users,
+  Minus,
+  X,
 } from 'lucide-react'
 import {
   Card,
@@ -57,10 +59,27 @@ interface Route {
   createdAt: string
 }
 
+interface EmployeeLevel {
+  _id: string
+  levelName: string
+  baseSalary: number
+}
+
 interface Employee {
   _id: string
   uniqueId: string
   name: string
+  level: {
+    _id: string
+    levelName: string
+  }
+}
+
+interface LevelRequirement {
+  levelId: string
+  levelName: string
+  count: number
+  selectedEmployees: string[]
 }
 
 interface Job {
@@ -103,7 +122,8 @@ export default function JobManagementPage() {
   const [selectedDays, setSelectedDays] = useState<string[]>([])
   const [selectedRouteId, setSelectedRouteId] = useState('')
   const [employees, setEmployees] = useState<Employee[]>([])
-  const [selectedEmployees, setSelectedEmployees] = useState<string[]>([])
+  const [levels, setLevels] = useState<EmployeeLevel[]>([])
+  const [levelRequirements, setLevelRequirements] = useState<LevelRequirement[]>([])
 
   const [searchQuery, setSearchQuery] = useState('')
   const [filterRoute, setFilterRoute] = useState('')
@@ -139,12 +159,23 @@ export default function JobManagementPage() {
 
   const fetchEmployees = useCallback(async () => {
     try {
-      const res = await fetch('/api/employees?approvalStatus=approved')
+      const res = await fetch('/api/employees?approvalStatus=approved&limit=500')
       if (!res.ok) throw new Error('Failed to fetch employees')
       const data = await res.json()
       setEmployees(data.employees || [])
     } catch (err) {
       console.error('Failed to load employees:', err)
+    }
+  }, [])
+
+  const fetchLevels = useCallback(async () => {
+    try {
+      const res = await fetch('/api/levels')
+      if (!res.ok) throw new Error('Failed to fetch levels')
+      const data = await res.json()
+      setLevels(data)
+    } catch (err) {
+      console.error('Failed to load levels:', err)
     }
   }, [])
 
@@ -171,8 +202,8 @@ export default function JobManagementPage() {
 
   useEffect(() => {
     if (status === 'loading') return
-    Promise.all([fetchRoutes(), fetchEmployees()]).then(() => setIsLoading(false))
-  }, [status, fetchRoutes, fetchEmployees])
+    Promise.all([fetchRoutes(), fetchEmployees(), fetchLevels()]).then(() => setIsLoading(false))
+  }, [status, fetchRoutes, fetchEmployees, fetchLevels])
 
   useEffect(() => {
     if (!isLoading) {
@@ -237,7 +268,11 @@ export default function JobManagementPage() {
       showError('Please select a route')
       return
     }
-    if (selectedEmployees.length === 0) {
+
+    // Collect all selected employees from level requirements
+    const allSelectedEmployees = levelRequirements.flatMap(lr => lr.selectedEmployees)
+
+    if (allSelectedEmployees.length === 0) {
       showError('Please assign at least one employee')
       return
     }
@@ -246,20 +281,20 @@ export default function JobManagementPage() {
     try {
       const payload = {
         routeId: selectedRouteId,
-        assignedEmployees: selectedEmployees,
+        assignedEmployees: allSelectedEmployees,
       }
 
       if (editingJob) {
         const res = await fetch(`/api/jobs/${editingJob._id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ assignedEmployees: selectedEmployees }),
+          body: JSON.stringify({ assignedEmployees: allSelectedEmployees }),
         })
         if (!res.ok) {
           const err = await res.json()
           throw new Error(err.error || 'Failed to update job')
         }
-        success('Job updated successfully')
+        success('Assignment updated successfully')
       } else {
         const res = await fetch('/api/jobs', {
           method: 'POST',
@@ -276,7 +311,7 @@ export default function JobManagementPage() {
       setIsJobModalOpen(false)
       setEditingJob(null)
       setSelectedRouteId('')
-      setSelectedEmployees([])
+      setLevelRequirements([])
       fetchJobs()
     } catch (err) {
       showError(err instanceof Error ? err.message : 'An error occurred')
@@ -349,19 +384,121 @@ export default function JobManagementPage() {
   const openJobCreate = () => {
     setEditingJob(null)
     setSelectedRouteId('')
-    setSelectedEmployees([])
+    setLevelRequirements([])
     setIsJobModalOpen(true)
   }
 
   const openJobEdit = (job: Job) => {
     setEditingJob(job)
     setSelectedRouteId(job.routeId._id)
-    setSelectedEmployees(job.assignedEmployees?.map(e => e._id) || [])
+
+    // Group existing employees by level
+    const employeesByLevel: Record<string, string[]> = {}
+    job.assignedEmployees?.forEach(emp => {
+      const employee = employees.find(e => e._id === emp._id)
+      if (employee?.level) {
+        if (!employeesByLevel[employee.level._id]) {
+          employeesByLevel[employee.level._id] = []
+        }
+        employeesByLevel[employee.level._id].push(emp._id)
+      }
+    })
+
+    // Create level requirements from existing assignments
+    const requirements: LevelRequirement[] = Object.entries(employeesByLevel).map(([levelId, empIds]) => {
+      const level = levels.find(l => l._id === levelId)
+      return {
+        levelId,
+        levelName: level?.levelName || 'Unknown',
+        count: empIds.length,
+        selectedEmployees: empIds,
+      }
+    })
+
+    setLevelRequirements(requirements)
     setIsJobModalOpen(true)
   }
 
+  const addLevelRequirement = (levelId: string) => {
+    const level = levels.find(l => l._id === levelId)
+    if (!level) return
+
+    // Check if level already added
+    if (levelRequirements.some(lr => lr.levelId === levelId)) {
+      showError('This level is already added')
+      return
+    }
+
+    setLevelRequirements([
+      ...levelRequirements,
+      {
+        levelId,
+        levelName: level.levelName,
+        count: 1,
+        selectedEmployees: [],
+      },
+    ])
+  }
+
+  const removeLevelRequirement = (levelId: string) => {
+    setLevelRequirements(levelRequirements.filter(lr => lr.levelId !== levelId))
+  }
+
+  const updateLevelCount = (levelId: string, count: number) => {
+    setLevelRequirements(
+      levelRequirements.map(lr =>
+        lr.levelId === levelId ? { ...lr, count: Math.max(1, count) } : lr
+      )
+    )
+  }
+
+  const toggleEmployeeSelection = (levelId: string, employeeId: string) => {
+    setLevelRequirements(
+      levelRequirements.map(lr => {
+        if (lr.levelId !== levelId) return lr
+        const isSelected = lr.selectedEmployees.includes(employeeId)
+        return {
+          ...lr,
+          selectedEmployees: isSelected
+            ? lr.selectedEmployees.filter(id => id !== employeeId)
+            : [...lr.selectedEmployees, employeeId],
+        }
+      })
+    )
+  }
+
+  const autoFillLevel = (levelId: string) => {
+    const requirement = levelRequirements.find(lr => lr.levelId === levelId)
+    if (!requirement) return
+
+    // Get all employees of this level that aren't already selected
+    const allSelectedEmployees = levelRequirements.flatMap(lr => lr.selectedEmployees)
+    const availableEmployees = employees.filter(
+      e => e.level?._id === levelId && !allSelectedEmployees.includes(e._id)
+    )
+
+    // Select up to the required count
+    const toSelect = availableEmployees.slice(0, requirement.count - requirement.selectedEmployees.length)
+
+    setLevelRequirements(
+      levelRequirements.map(lr =>
+        lr.levelId === levelId
+          ? { ...lr, selectedEmployees: [...lr.selectedEmployees, ...toSelect.map(e => e._id)] }
+          : lr
+      )
+    )
+  }
+
+  const getEmployeesByLevel = (levelId: string) => {
+    return employees.filter(e => e.level?._id === levelId)
+  }
+
+  const getSelectedCount = () => {
+    return levelRequirements.reduce((sum, lr) => sum + lr.selectedEmployees.length, 0)
+  }
+
   const routeOptions = routes.map((r) => ({ value: r._id, label: `${r.name} (${r.pointA} - ${r.pointB})` }))
-  const employeeOptions = employees.map((e) => ({ value: e._id, label: `${e.name} (${e.uniqueId})` }))
+  const levelOptions = levels.map((l) => ({ value: l._id, label: l.levelName }))
 
   const filteredJobs = jobs.filter((job) => {
     if (!searchQuery) return true
@@ -766,12 +903,13 @@ export default function JobManagementPage() {
           setIsJobModalOpen(false)
           setEditingJob(null)
           setSelectedRouteId('')
-          setSelectedEmployees([])
+          setLevelRequirements([])
         }}
         title={editingJob ? 'Edit Assignment' : 'Assign Employees to Route'}
-        size="md"
+        size="lg"
       >
-        <div className="space-y-4">
+        <div className="space-y-6">
+          {/* Route Selection */}
           <div>
             <Label>Route</Label>
             <Select
@@ -788,17 +926,149 @@ export default function JobManagementPage() {
             )}
           </div>
 
+          {/* Add Level Requirement */}
           <div>
-            <Label>Assign Employees</Label>
-            <MultiSelect
-              options={employeeOptions}
-              value={selectedEmployees}
-              onChange={setSelectedEmployees}
-              placeholder="Select employees to assign"
-            />
+            <Label>Add Employee Level</Label>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <Select
+                  options={levelOptions.filter(
+                    lo => !levelRequirements.some(lr => lr.levelId === lo.value)
+                  )}
+                  value=""
+                  onChange={(v) => v && addLevelRequirement(v)}
+                  placeholder="Select a level to add..."
+                />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Add employee levels and specify how many of each you need
+            </p>
           </div>
 
-          <div className="flex justify-end gap-3 pt-4">
+          {/* Level Requirements */}
+          {levelRequirements.length > 0 && (
+            <div className="space-y-4">
+              {levelRequirements.map((requirement) => {
+                const levelEmployees = getEmployeesByLevel(requirement.levelId)
+                const allSelectedInOtherLevels = levelRequirements
+                  .filter(lr => lr.levelId !== requirement.levelId)
+                  .flatMap(lr => lr.selectedEmployees)
+
+                return (
+                  <div
+                    key={requirement.levelId}
+                    className="border rounded-lg p-4 space-y-3"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Badge variant="secondary" className="text-sm">
+                          {requirement.levelName}
+                        </Badge>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 w-7 p-0"
+                            onClick={() => updateLevelCount(requirement.levelId, requirement.count - 1)}
+                          >
+                            <Minus className="h-3 w-3" />
+                          </Button>
+                          <span className="w-8 text-center font-medium">
+                            {requirement.count}
+                          </span>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 w-7 p-0"
+                            onClick={() => updateLevelCount(requirement.levelId, requirement.count + 1)}
+                          >
+                            <Plus className="h-3 w-3" />
+                          </Button>
+                          <span className="text-sm text-muted-foreground">needed</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => autoFillLevel(requirement.levelId)}
+                          disabled={requirement.selectedEmployees.length >= requirement.count}
+                        >
+                          Auto-fill
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeLevelRequirement(requirement.levelId)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="text-sm text-muted-foreground">
+                      Selected: {requirement.selectedEmployees.length} / {requirement.count}
+                      {requirement.selectedEmployees.length < requirement.count && (
+                        <span className="text-amber-600 ml-2">
+                          (need {requirement.count - requirement.selectedEmployees.length} more)
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-32 overflow-y-auto">
+                      {levelEmployees.map((emp) => {
+                        const isSelected = requirement.selectedEmployees.includes(emp._id)
+                        const isSelectedElsewhere = allSelectedInOtherLevels.includes(emp._id)
+
+                        return (
+                          <button
+                            key={emp._id}
+                            type="button"
+                            disabled={isSelectedElsewhere}
+                            onClick={() => toggleEmployeeSelection(requirement.levelId, emp._id)}
+                            className={`p-2 rounded text-sm text-left border transition-colors ${
+                              isSelected
+                                ? 'bg-primary text-primary-foreground border-primary'
+                                : isSelectedElsewhere
+                                ? 'bg-muted text-muted-foreground border-muted cursor-not-allowed'
+                                : 'border-border bg-background hover:bg-muted'
+                            }`}
+                          >
+                            <div className="font-medium truncate">{emp.name}</div>
+                            <div className="text-xs opacity-70 truncate">{emp.uniqueId}</div>
+                          </button>
+                        )
+                      })}
+                      {levelEmployees.length === 0 && (
+                        <p className="col-span-full text-sm text-muted-foreground py-2">
+                          No employees at this level
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Summary */}
+          {levelRequirements.length > 0 && (
+            <div className="bg-muted/50 rounded-lg p-3">
+              <div className="text-sm font-medium">
+                Total Selected: {getSelectedCount()} employee{getSelectedCount() !== 1 ? 's' : ''}
+              </div>
+              <div className="flex flex-wrap gap-1 mt-2">
+                {levelRequirements.map(lr => (
+                  <Badge key={lr.levelId} variant="outline" className="text-xs">
+                    {lr.levelName}: {lr.selectedEmployees.length}/{lr.count}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-3 pt-4 border-t">
             <Button
               type="button"
               variant="outline"
@@ -806,18 +1076,18 @@ export default function JobManagementPage() {
                 setIsJobModalOpen(false)
                 setEditingJob(null)
                 setSelectedRouteId('')
-                setSelectedEmployees([])
+                setLevelRequirements([])
               }}
             >
               Cancel
             </Button>
-            <Button onClick={onJobSubmit} disabled={isSubmitting}>
+            <Button onClick={onJobSubmit} disabled={isSubmitting || getSelectedCount() === 0}>
               {isSubmitting ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : editingJob ? (
                 'Update Assignment'
               ) : (
-                'Assign Employees'
+                `Assign ${getSelectedCount()} Employee${getSelectedCount() !== 1 ? 's' : ''}`
               )}
             </Button>
           </div>
