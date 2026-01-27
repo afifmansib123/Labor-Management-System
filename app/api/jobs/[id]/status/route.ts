@@ -30,7 +30,7 @@ export async function PUT(
     const body = await req.json()
     const { status } = body
 
-    if (!['pending', 'completed'].includes(status)) {
+    if (!['active', 'inactive'].includes(status)) {
       return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
     }
 
@@ -38,7 +38,9 @@ export async function PUT(
       id,
       { status },
       { new: true }
-    ).populate('routeId', 'name pointA pointB')
+    )
+      .populate('routeId', 'name pointA pointB operatingDays operatingHours')
+      .populate('assignedEmployees', 'uniqueId name')
 
     if (!job) {
       return NextResponse.json({ error: 'Job not found' }, { status: 404 })

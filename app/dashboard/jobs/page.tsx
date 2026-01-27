@@ -13,7 +13,6 @@ import {
   Search,
   Check,
   MapPin,
-  Calendar as CalendarIcon,
   Route as RouteIcon,
   Filter,
   Users,
@@ -31,7 +30,6 @@ import { Label } from '@/components/ui/Label'
 import { Modal, ConfirmModal } from '@/components/ui/Modal'
 import { Badge } from '@/components/ui/Badge'
 import { Select, MultiSelect } from '@/components/ui/Select'
-import { DatePicker } from '@/components/ui/Calendar'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Tabs'
 import {
   Table,
@@ -72,12 +70,11 @@ interface Job {
     name: string
     pointA: string
     pointB: string
+    operatingDays?: string[]
     operatingHours?: { start: string; end: string }
   }
-  scheduledDate: string
-  scheduledTime?: string
   assignedEmployees?: Array<{ _id: string; uniqueId: string; name: string }>
-  status: 'pending' | 'completed'
+  status: 'active' | 'inactive'
   createdBy: { email: string }
   createdAt: string
 }
@@ -104,7 +101,6 @@ export default function JobManagementPage() {
 
   const [mapData, setMapData] = useState<{ file: File; preview: string } | null>(null)
   const [selectedDays, setSelectedDays] = useState<string[]>([])
-  const [jobDate, setJobDate] = useState<Date | undefined>()
   const [selectedRouteId, setSelectedRouteId] = useState('')
   const [employees, setEmployees] = useState<Employee[]>([])
   const [selectedEmployees, setSelectedEmployees] = useState<string[]>([])
@@ -237,8 +233,12 @@ export default function JobManagementPage() {
   }
 
   const onJobSubmit = async () => {
-    if (!selectedRouteId || !jobDate) {
-      showError('Please select a route and date')
+    if (!selectedRouteId) {
+      showError('Please select a route')
+      return
+    }
+    if (selectedEmployees.length === 0) {
+      showError('Please assign at least one employee')
       return
     }
 
@@ -246,7 +246,6 @@ export default function JobManagementPage() {
     try {
       const payload = {
         routeId: selectedRouteId,
-        scheduledDate: jobDate.toISOString(),
         assignedEmployees: selectedEmployees,
       }
 
@@ -254,7 +253,7 @@ export default function JobManagementPage() {
         const res = await fetch(`/api/jobs/${editingJob._id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
+          body: JSON.stringify({ assignedEmployees: selectedEmployees }),
         })
         if (!res.ok) {
           const err = await res.json()
@@ -271,13 +270,12 @@ export default function JobManagementPage() {
           const err = await res.json()
           throw new Error(err.error || 'Failed to create job')
         }
-        success('Job created successfully')
+        success('Employees assigned to route successfully')
       }
 
       setIsJobModalOpen(false)
       setEditingJob(null)
       setSelectedRouteId('')
-      setJobDate(undefined)
       setSelectedEmployees([])
       fetchJobs()
     } catch (err) {
@@ -319,12 +317,13 @@ export default function JobManagementPage() {
     }
   }
 
-  const handleStatusChange = async (job: Job, status: 'pending' | 'completed') => {
+  const handleStatusChange = async (job: Job) => {
+    const newStatus = job.status === 'active' ? 'inactive' : 'active'
     try {
       const res = await fetch(`/api/jobs/${job._id}/status`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status: newStatus }),
       })
 
       if (!res.ok) {
@@ -332,7 +331,7 @@ export default function JobManagementPage() {
         throw new Error(err.error || 'Failed to update status')
       }
 
-      success(`Job marked as ${status}`)
+      success(`Job marked as ${newStatus}`)
       fetchJobs()
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to update job status')
@@ -350,7 +349,6 @@ export default function JobManagementPage() {
   const openJobCreate = () => {
     setEditingJob(null)
     setSelectedRouteId('')
-    setJobDate(undefined)
     setSelectedEmployees([])
     setIsJobModalOpen(true)
   }
@@ -358,7 +356,6 @@ export default function JobManagementPage() {
   const openJobEdit = (job: Job) => {
     setEditingJob(job)
     setSelectedRouteId(job.routeId._id)
-    setJobDate(new Date(job.scheduledDate))
     setSelectedEmployees(job.assignedEmployees?.map(e => e._id) || [])
     setIsJobModalOpen(true)
   }
@@ -395,8 +392,8 @@ export default function JobManagementPage() {
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
           <TabsTrigger value="jobs">
-            <CalendarIcon className="h-4 w-4 mr-2" />
-            Jobs
+            <Users className="h-4 w-4 mr-2" />
+            Assignments
           </TabsTrigger>
           <TabsTrigger value="routes">
             <RouteIcon className="h-4 w-4 mr-2" />
@@ -409,15 +406,15 @@ export default function JobManagementPage() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle>Scheduled Jobs</CardTitle>
+                  <CardTitle>Route Assignments</CardTitle>
                   <CardDescription>
-                    {totalItems} job{totalItems !== 1 ? 's' : ''} total
+                    {totalItems} assignment{totalItems !== 1 ? 's' : ''} total
                   </CardDescription>
                 </div>
                 {(isMasterAdmin || isStaff) && (
                   <Button onClick={openJobCreate}>
                     <Plus className="h-4 w-4 mr-2" />
-                    Create Job
+                    Assign Employees
                   </Button>
                 )}
               </div>
@@ -461,8 +458,8 @@ export default function JobManagementPage() {
                       <Select
                         options={[
                           { value: '', label: 'All Status' },
-                          { value: 'pending', label: 'Pending' },
-                          { value: 'completed', label: 'Completed' },
+                          { value: 'active', label: 'Active' },
+                          { value: 'inactive', label: 'Inactive' },
                         ]}
                         value={filterStatus}
                         onChange={(v) => {
@@ -485,8 +482,8 @@ export default function JobManagementPage() {
                         <TableRow>
                           <TableHead>Route</TableHead>
                           <TableHead>From / To</TableHead>
-                          <TableHead>Date</TableHead>
-                          <TableHead>Assigned</TableHead>
+                          <TableHead>Schedule</TableHead>
+                          <TableHead>Assigned Employees</TableHead>
                           <TableHead>Status</TableHead>
                           <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
@@ -502,7 +499,20 @@ export default function JobManagementPage() {
                               </div>
                             </TableCell>
                             <TableCell>
-                              {new Date(job.scheduledDate).toLocaleDateString()}
+                              <div className="text-sm">
+                                <div className="flex flex-wrap gap-1 mb-1">
+                                  {job.routeId.operatingDays?.map((day) => (
+                                    <Badge key={day} variant="outline" className="text-xs">
+                                      {day.slice(0, 3)}
+                                    </Badge>
+                                  ))}
+                                </div>
+                                {job.routeId.operatingHours && (
+                                  <span className="text-muted-foreground">
+                                    {job.routeId.operatingHours.start} - {job.routeId.operatingHours.end}
+                                  </span>
+                                )}
+                              </div>
                             </TableCell>
                             <TableCell>
                               {job.assignedEmployees && job.assignedEmployees.length > 0 ? (
@@ -514,26 +524,26 @@ export default function JobManagementPage() {
                                   ))}
                                 </div>
                               ) : (
-                                <span className="text-muted-foreground text-sm">Unassigned</span>
+                                <span className="text-muted-foreground text-sm">No employees</span>
                               )}
                             </TableCell>
                             <TableCell>
                               <Badge
-                                variant={job.status === 'completed' ? 'success' : 'warning'}
+                                variant={job.status === 'active' ? 'success' : 'secondary'}
                               >
                                 {job.status}
                               </Badge>
                             </TableCell>
                             <TableCell className="text-right">
                               <div className="flex items-center justify-end gap-1">
-                                {job.status === 'pending' && (isMasterAdmin || isStaff) && (
+                                {(isMasterAdmin || isStaff) && (
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    onClick={() => handleStatusChange(job, 'completed')}
-                                    title="Mark as completed"
+                                    onClick={() => handleStatusChange(job)}
+                                    title={job.status === 'active' ? 'Deactivate' : 'Activate'}
                                   >
-                                    <Check className="h-4 w-4 text-green-600" />
+                                    <Check className={`h-4 w-4 ${job.status === 'active' ? 'text-green-600' : 'text-muted-foreground'}`} />
                                   </Button>
                                 )}
                                 {(isMasterAdmin || isStaff) && (
@@ -756,10 +766,9 @@ export default function JobManagementPage() {
           setIsJobModalOpen(false)
           setEditingJob(null)
           setSelectedRouteId('')
-          setJobDate(undefined)
           setSelectedEmployees([])
         }}
-        title={editingJob ? 'Edit Job' : 'Create New Job'}
+        title={editingJob ? 'Edit Assignment' : 'Assign Employees to Route'}
         size="md"
       >
         <div className="space-y-4">
@@ -770,17 +779,13 @@ export default function JobManagementPage() {
               value={selectedRouteId}
               onChange={setSelectedRouteId}
               placeholder="Select a route"
+              disabled={!!editingJob}
             />
-          </div>
-
-          <div>
-            <Label>Date</Label>
-            <DatePicker
-              value={jobDate}
-              onChange={setJobDate}
-              placeholder="Select date"
-              minDate={new Date()}
-            />
+            {editingJob && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Route cannot be changed. Delete and create a new assignment instead.
+              </p>
+            )}
           </div>
 
           <div>
@@ -801,7 +806,6 @@ export default function JobManagementPage() {
                 setIsJobModalOpen(false)
                 setEditingJob(null)
                 setSelectedRouteId('')
-                setJobDate(undefined)
                 setSelectedEmployees([])
               }}
             >
@@ -811,9 +815,9 @@ export default function JobManagementPage() {
               {isSubmitting ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : editingJob ? (
-                'Update Job'
+                'Update Assignment'
               ) : (
-                'Create Job'
+                'Assign Employees'
               )}
             </Button>
           </div>
