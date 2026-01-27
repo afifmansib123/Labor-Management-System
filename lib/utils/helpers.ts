@@ -64,3 +64,23 @@ export function debounce<T extends (...args: Parameters<T>) => ReturnType<T>>(
 export function isValidObjectId(id: string): boolean {
   return /^[a-f\d]{24}$/i.test(id)
 }
+
+import { ZodError } from 'zod'
+
+export function formatZodError(error: ZodError): string {
+  const messages = error.errors.map((e) => {
+    const field = e.path.join('.')
+    return field ? `${field}: ${e.message}` : e.message
+  })
+  return messages.join(', ')
+}
+
+export function getApiErrorMessage(error: unknown): string {
+  if (error instanceof ZodError) {
+    return formatZodError(error)
+  }
+  if (error instanceof Error) {
+    return error.message
+  }
+  return 'An unexpected error occurred'
+}

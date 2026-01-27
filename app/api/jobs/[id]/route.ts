@@ -4,7 +4,8 @@ import dbConnect from '@/lib/db'
 import { Job } from '@/lib/models/Job'
 import { authOptions } from '@/lib/auth'
 import mongoose from 'mongoose'
-import { z } from 'zod'
+import { z, ZodError } from 'zod'
+import { formatZodError } from '@/lib/utils/helpers'
 
 const updateJobSchema = z.object({
   routeId: z.string().min(1, 'Route is required').optional(),
@@ -85,8 +86,8 @@ export async function PUT(
     return NextResponse.json(job)
   } catch (error) {
     console.error('Error updating job:', error)
-    if (error instanceof Error && error.name === 'ZodError') {
-      return NextResponse.json({ error: 'Validation error', details: error }, { status: 400 })
+    if (error instanceof ZodError) {
+      return NextResponse.json({ error: formatZodError(error) }, { status: 400 })
     }
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }

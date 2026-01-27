@@ -5,7 +5,8 @@ import { Partner } from '@/lib/models/Partner'
 import { User } from '@/lib/models/User'
 import { authOptions } from '@/lib/auth'
 import mongoose from 'mongoose'
-import { z } from 'zod'
+import { z, ZodError } from 'zod'
+import { formatZodError } from '@/lib/utils/helpers'
 
 const updatePartnerSchema = z.object({
   companyName: z.string().min(1, 'Company name is required'),
@@ -85,7 +86,9 @@ export async function PUT(
         contactPhone: validated.contactPhone,
       },
       { new: true }
-    ).populate('userId', 'email createdAt')
+    )
+      .populate('userId', 'email createdAt')
+      .populate('createdBy', 'email')
 
     if (!partner) {
       return NextResponse.json({ error: 'Partner not found' }, { status: 404 })
@@ -94,8 +97,8 @@ export async function PUT(
     return NextResponse.json(partner)
   } catch (error) {
     console.error('Error updating partner:', error)
-    if (error instanceof Error && error.name === 'ZodError') {
-      return NextResponse.json({ error: 'Validation error', details: error }, { status: 400 })
+    if (error instanceof ZodError) {
+      return NextResponse.json({ error: formatZodError(error) }, { status: 400 })
     }
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }

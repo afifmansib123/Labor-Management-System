@@ -4,6 +4,8 @@ import dbConnect from '@/lib/db'
 import { Route } from '@/lib/models/Route'
 import { authOptions } from '@/lib/auth'
 import { createRouteSchema } from '@/lib/utils/validation'
+import { ZodError } from 'zod'
+import { formatZodError } from '@/lib/utils/helpers'
 
 export async function GET(req: NextRequest) {
   try {
@@ -54,6 +56,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(route, { status: 201 })
   } catch (error) {
     console.error('Error creating route:', error)
+    if (error instanceof ZodError) {
+      return NextResponse.json({ error: formatZodError(error) }, { status: 400 })
+    }
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

@@ -178,7 +178,10 @@ export default function JobManagementPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         })
-        if (!res.ok) throw new Error('Failed to update route')
+        if (!res.ok) {
+          const err = await res.json()
+          throw new Error(err.error || 'Failed to update route')
+        }
         success('Route updated successfully')
       } else {
         const res = await fetch('/api/routes', {
@@ -186,7 +189,10 @@ export default function JobManagementPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         })
-        if (!res.ok) throw new Error('Failed to create route')
+        if (!res.ok) {
+          const err = await res.json()
+          throw new Error(err.error || 'Failed to create route')
+        }
         success('Route created successfully')
       }
 
@@ -223,7 +229,10 @@ export default function JobManagementPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         })
-        if (!res.ok) throw new Error('Failed to update job')
+        if (!res.ok) {
+          const err = await res.json()
+          throw new Error(err.error || 'Failed to update job')
+        }
         success('Job updated successfully')
       } else {
         const res = await fetch('/api/jobs', {
@@ -231,7 +240,10 @@ export default function JobManagementPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         })
-        if (!res.ok) throw new Error('Failed to create job')
+        if (!res.ok) {
+          const err = await res.json()
+          throw new Error(err.error || 'Failed to create job')
+        }
         success('Job created successfully')
       }
 
@@ -259,7 +271,10 @@ export default function JobManagementPage() {
           : `/api/jobs/${deletingItem.item._id}`
 
       const res = await fetch(endpoint, { method: 'DELETE' })
-      if (!res.ok) throw new Error(`Failed to delete ${deletingItem.type}`)
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || `Failed to delete ${deletingItem.type}`)
+      }
 
       success(`${deletingItem.type === 'route' ? 'Route' : 'Job'} deleted successfully`)
       setIsDeleteModalOpen(false)
@@ -285,12 +300,15 @@ export default function JobManagementPage() {
         body: JSON.stringify({ status }),
       })
 
-      if (!res.ok) throw new Error('Failed to update status')
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || 'Failed to update status')
+      }
 
       success(`Job marked as ${status}`)
       fetchJobs()
     } catch (err) {
-      showError('Failed to update job status')
+      showError(err instanceof Error ? err.message : 'Failed to update job status')
     }
   }
 

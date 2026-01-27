@@ -1,6 +1,6 @@
 import mongoose from 'mongoose'
 
-const mongoUri = process.env.MONGODB_URI
+const mongoUri = process.env.MONGODB_URI as string
 
 if (!mongoUri) {
   throw new Error('MONGODB_URI environment variable is not set')
