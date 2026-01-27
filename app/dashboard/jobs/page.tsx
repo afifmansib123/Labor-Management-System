@@ -14,9 +14,9 @@ import {
   Check,
   MapPin,
   Calendar as CalendarIcon,
-  Clock,
   Route as RouteIcon,
   Filter,
+  Users,
 } from 'lucide-react'
 import {
   Card,
@@ -30,9 +30,8 @@ import { Input } from '@/components/ui/Input'
 import { Label } from '@/components/ui/Label'
 import { Modal, ConfirmModal } from '@/components/ui/Modal'
 import { Badge } from '@/components/ui/Badge'
-import { Select } from '@/components/ui/Select'
+import { Select, MultiSelect } from '@/components/ui/Select'
 import { DatePicker } from '@/components/ui/Calendar'
-import { TimePicker } from '@/components/ui/TimePicker'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Tabs'
 import {
   Table,
@@ -60,6 +59,12 @@ interface Route {
   createdAt: string
 }
 
+interface Employee {
+  _id: string
+  uniqueId: string
+  name: string
+}
+
 interface Job {
   _id: string
   routeId: {
@@ -67,9 +72,11 @@ interface Job {
     name: string
     pointA: string
     pointB: string
+    operatingHours?: { start: string; end: string }
   }
   scheduledDate: string
-  scheduledTime: string
+  scheduledTime?: string
+  assignedEmployees?: Array<{ _id: string; uniqueId: string; name: string }>
   status: 'pending' | 'completed'
   createdBy: { email: string }
   createdAt: string
@@ -98,8 +105,9 @@ export default function JobManagementPage() {
   const [mapData, setMapData] = useState<{ file: File; preview: string } | null>(null)
   const [selectedDays, setSelectedDays] = useState<string[]>([])
   const [jobDate, setJobDate] = useState<Date | undefined>()
-  const [jobTime, setJobTime] = useState('')
   const [selectedRouteId, setSelectedRouteId] = useState('')
+  const [employees, setEmployees] = useState<Employee[]>([])
+  const [selectedEmployees, setSelectedEmployees] = useState<string[]>([])
 
   const [searchQuery, setSearchQuery] = useState('')
   const [filterRoute, setFilterRoute] = useState('')
@@ -133,6 +141,17 @@ export default function JobManagementPage() {
     }
   }, [showError])
 
+  const fetchEmployees = useCallback(async () => {
+    try {
+      const res = await fetch('/api/employees?approvalStatus=approved')
+      if (!res.ok) throw new Error('Failed to fetch employees')
+      const data = await res.json()
+      setEmployees(data.employees || [])
+    } catch (err) {
+      console.error('Failed to load employees:', err)
+    }
+  }, [])
+
   const fetchJobs = useCallback(async () => {
     try {
       const params = new URLSearchParams({
@@ -156,8 +175,8 @@ export default function JobManagementPage() {
 
   useEffect(() => {
     if (status === 'loading') return
-    fetchRoutes().then(() => setIsLoading(false))
-  }, [status, fetchRoutes])
+    Promise.all([fetchRoutes(), fetchEmployees()]).then(() => setIsLoading(false))
+  }, [status, fetchRoutes, fetchEmployees])
 
   useEffect(() => {
     if (!isLoading) {
@@ -218,8 +237,8 @@ export default function JobManagementPage() {
   }
 
   const onJobSubmit = async () => {
-    if (!selectedRouteId || !jobDate || !jobTime) {
-      showError('Please fill in all required fields')
+    if (!selectedRouteId || !jobDate) {
+      showError('Please select a route and date')
       return
     }
 
@@ -228,7 +247,7 @@ export default function JobManagementPage() {
       const payload = {
         routeId: selectedRouteId,
         scheduledDate: jobDate.toISOString(),
-        scheduledTime: jobTime,
+        assignedEmployees: selectedEmployees,
       }
 
       if (editingJob) {
@@ -259,7 +278,7 @@ export default function JobManagementPage() {
       setEditingJob(null)
       setSelectedRouteId('')
       setJobDate(undefined)
-      setJobTime('')
+      setSelectedEmployees([])
       fetchJobs()
     } catch (err) {
       showError(err instanceof Error ? err.message : 'An error occurred')
@@ -332,7 +351,7 @@ export default function JobManagementPage() {
     setEditingJob(null)
     setSelectedRouteId('')
     setJobDate(undefined)
-    setJobTime('')
+    setSelectedEmployees([])
     setIsJobModalOpen(true)
   }
 
@@ -340,11 +359,12 @@ export default function JobManagementPage() {
     setEditingJob(job)
     setSelectedRouteId(job.routeId._id)
     setJobDate(new Date(job.scheduledDate))
-    setJobTime(job.scheduledTime)
+    setSelectedEmployees(job.assignedEmployees?.map(e => e._id) || [])
     setIsJobModalOpen(true)
   }
 
   const routeOptions = routes.map((r) => ({ value: r._id, label: `${r.name} (${r.pointA} - ${r.pointB})` }))
+  const employeeOptions = employees.map((e) => ({ value: e._id, label: `${e.name} (${e.uniqueId})` }))
 
   const filteredJobs = jobs.filter((job) => {
     if (!searchQuery) return true
@@ -466,7 +486,7 @@ export default function JobManagementPage() {
                           <TableHead>Route</TableHead>
                           <TableHead>From / To</TableHead>
                           <TableHead>Date</TableHead>
-                          <TableHead>Time</TableHead>
+                          <TableHead>Assigned</TableHead>
                           <TableHead>Status</TableHead>
                           <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
@@ -484,7 +504,19 @@ export default function JobManagementPage() {
                             <TableCell>
                               {new Date(job.scheduledDate).toLocaleDateString()}
                             </TableCell>
-                            <TableCell>{job.scheduledTime}</TableCell>
+                            <TableCell>
+                              {job.assignedEmployees && job.assignedEmployees.length > 0 ? (
+                                <div className="flex flex-wrap gap-1">
+                                  {job.assignedEmployees.map((emp) => (
+                                    <Badge key={emp._id} variant="secondary" className="text-xs">
+                                      {emp.name}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span className="text-muted-foreground text-sm">Unassigned</span>
+                              )}
+                            </TableCell>
                             <TableCell>
                               <Badge
                                 variant={job.status === 'completed' ? 'success' : 'warning'}
@@ -725,7 +757,7 @@ export default function JobManagementPage() {
           setEditingJob(null)
           setSelectedRouteId('')
           setJobDate(undefined)
-          setJobTime('')
+          setSelectedEmployees([])
         }}
         title={editingJob ? 'Edit Job' : 'Create New Job'}
         size="md"
@@ -752,11 +784,12 @@ export default function JobManagementPage() {
           </div>
 
           <div>
-            <Label>Time</Label>
-            <TimePicker
-              value={jobTime}
-              onChange={setJobTime}
-              placeholder="Select time"
+            <Label>Assign Employees</Label>
+            <MultiSelect
+              options={employeeOptions}
+              value={selectedEmployees}
+              onChange={setSelectedEmployees}
+              placeholder="Select employees to assign"
             />
           </div>
 
@@ -769,7 +802,7 @@ export default function JobManagementPage() {
                 setEditingJob(null)
                 setSelectedRouteId('')
                 setJobDate(undefined)
-                setJobTime('')
+                setSelectedEmployees([])
               }}
             >
               Cancel

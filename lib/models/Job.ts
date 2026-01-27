@@ -3,7 +3,8 @@ import mongoose, { Schema, Document, Model } from 'mongoose'
 export interface IJob extends Document {
   routeId: mongoose.Types.ObjectId
   scheduledDate: Date
-  scheduledTime: string
+  scheduledTime?: string
+  assignedEmployees: mongoose.Types.ObjectId[]
   status: 'pending' | 'completed'
   createdBy: mongoose.Types.ObjectId
   createdAt: Date
@@ -22,8 +23,14 @@ const jobSchema = new Schema<IJob>(
     },
     scheduledTime: {
       type: String,
-      required: true,
+      required: false,
     },
+    assignedEmployees: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: 'Employee',
+      },
+    ],
     status: {
       type: String,
       enum: ['pending', 'completed'],

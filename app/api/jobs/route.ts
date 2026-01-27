@@ -43,8 +43,9 @@ export async function GET(req: NextRequest) {
 
     const total = await Job.countDocuments(query)
     const jobs = await Job.find(query)
-      .populate('routeId', 'name pointA pointB')
+      .populate('routeId', 'name pointA pointB operatingHours')
       .populate('createdBy', 'email')
+      .populate('assignedEmployees', 'uniqueId name')
       .sort({ scheduledDate: -1, scheduledTime: -1 })
       .skip((page - 1) * limit)
       .limit(limit)
@@ -71,6 +72,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    if (!session.user?.id) {
+      console.error('Session user ID is missing:', session)
+      return NextResponse.json({ error: 'Session invalid - please log out and log back in' }, { status: 401 })
+    }
+
     if (session.user.role === 'partner') {
       return NextResponse.json({ error: 'Partners cannot create jobs' }, { status: 403 })
     }
@@ -86,12 +92,14 @@ export async function POST(req: NextRequest) {
     const job = new Job({
       routeId: validated.routeId,
       scheduledDate: validated.scheduledDate,
-      scheduledTime: validated.scheduledTime,
+      scheduledTime: validated.scheduledTime || undefined,
+      assignedEmployees: validated.assignedEmployees || [],
       createdBy: session.user.id,
     })
 
     await job.save()
-    await job.populate('routeId', 'name pointA pointB')
+    await job.populate('routeId', 'name pointA pointB operatingHours')
+    await job.populate('assignedEmployees', 'uniqueId name')
 
     return NextResponse.json(job, { status: 201 })
   } catch (error) {

@@ -14,11 +14,16 @@ export async function GET() {
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
- 
+
+    if (!session.user?.id) {
+      console.error('Session user ID is missing:', session)
+      return NextResponse.json({ error: 'Session invalid - please log out and log back in' }, { status: 401 })
+    }
+
     await dbConnect()
- 
-    const userRole = (session.user as any).role
-    const userId = (session.user as any).id
+
+    const userRole = session.user.role
+    const userId = session.user.id
  
     // Build query filters based on role
     let employeeFilter: any = {}

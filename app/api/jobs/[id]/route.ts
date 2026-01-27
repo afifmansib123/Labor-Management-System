@@ -10,7 +10,8 @@ import { formatZodError } from '@/lib/utils/helpers'
 const updateJobSchema = z.object({
   routeId: z.string().min(1, 'Route is required').optional(),
   scheduledDate: z.string().optional(),
-  scheduledTime: z.string().min(1, 'Time is required').optional(),
+  scheduledTime: z.string().optional(),
+  assignedEmployees: z.array(z.string()).optional(),
 })
 
 export async function GET(
@@ -34,6 +35,7 @@ export async function GET(
     const job = await Job.findById(id)
       .populate('routeId', 'name pointA pointB operatingDays operatingHours')
       .populate('createdBy', 'email')
+      .populate('assignedEmployees', 'uniqueId name')
 
     if (!job) {
       return NextResponse.json({ error: 'Job not found' }, { status: 404 })
@@ -74,10 +76,12 @@ export async function PUT(
     const updateData: Record<string, unknown> = {}
     if (validated.routeId) updateData.routeId = validated.routeId
     if (validated.scheduledDate) updateData.scheduledDate = new Date(validated.scheduledDate)
-    if (validated.scheduledTime) updateData.scheduledTime = validated.scheduledTime
+    if (validated.scheduledTime !== undefined) updateData.scheduledTime = validated.scheduledTime
+    if (validated.assignedEmployees) updateData.assignedEmployees = validated.assignedEmployees
 
     const job = await Job.findByIdAndUpdate(id, updateData, { new: true })
-      .populate('routeId', 'name pointA pointB')
+      .populate('routeId', 'name pointA pointB operatingHours')
+      .populate('assignedEmployees', 'uniqueId name')
 
     if (!job) {
       return NextResponse.json({ error: 'Job not found' }, { status: 404 })
