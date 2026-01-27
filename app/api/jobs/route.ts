@@ -20,8 +20,6 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const routeId = searchParams.get('routeId')
     const status = searchParams.get('status')
-    const startDate = searchParams.get('startDate')
-    const endDate = searchParams.get('endDate')
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '20')
 
@@ -31,22 +29,16 @@ export async function GET(req: NextRequest) {
       query.routeId = new mongoose.Types.ObjectId(routeId)
     }
 
-    if (status && ['pending', 'completed'].includes(status)) {
+    if (status && ['active', 'inactive'].includes(status)) {
       query.status = status
-    }
-
-    if (startDate || endDate) {
-      query.scheduledDate = {}
-      if (startDate) (query.scheduledDate as Record<string, Date>).$gte = new Date(startDate)
-      if (endDate) (query.scheduledDate as Record<string, Date>).$lte = new Date(endDate)
     }
 
     const total = await Job.countDocuments(query)
     const jobs = await Job.find(query)
-      .populate('routeId', 'name pointA pointB operatingHours')
+      .populate('routeId', 'name pointA pointB operatingDays operatingHours')
       .populate('createdBy', 'email')
       .populate('assignedEmployees', 'uniqueId name')
-      .sort({ scheduledDate: -1, scheduledTime: -1 })
+      .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit)
 
@@ -84,21 +76,25 @@ export async function POST(req: NextRequest) {
     await dbConnect()
 
     const body = await req.json()
-    const validated = createJobSchema.parse({
-      ...body,
-      scheduledDate: new Date(body.scheduledDate),
-    })
+    const validated = createJobSchema.parse(body)
+
+    // Check if a job already exists for this route
+    const existingJob = await Job.findOne({ routeId: validated.routeId })
+    if (existingJob) {
+      return NextResponse.json(
+        { error: 'A job assignment already exists for this route. Edit the existing job instead.' },
+        { status: 400 }
+      )
+    }
 
     const job = new Job({
       routeId: validated.routeId,
-      scheduledDate: validated.scheduledDate,
-      scheduledTime: validated.scheduledTime || undefined,
-      assignedEmployees: validated.assignedEmployees || [],
+      assignedEmployees: validated.assignedEmployees,
       createdBy: session.user.id,
     })
 
     await job.save()
-    await job.populate('routeId', 'name pointA pointB operatingHours')
+    await job.populate('routeId', 'name pointA pointB operatingDays operatingHours')
     await job.populate('assignedEmployees', 'uniqueId name')
 
     return NextResponse.json(job, { status: 201 })

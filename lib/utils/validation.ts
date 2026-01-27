@@ -39,9 +39,7 @@ export const createRouteSchema = z.object({
 
 export const createJobSchema = z.object({
   routeId: z.string().min(1, 'Route is required'),
-  scheduledDate: z.date(),
-  scheduledTime: z.string().optional(),
-  assignedEmployees: z.array(z.string()).optional(),
+  assignedEmployees: z.array(z.string()).min(1, 'At least one employee must be assigned'),
 })
 
 export const createPaymentSchema = z.object({
