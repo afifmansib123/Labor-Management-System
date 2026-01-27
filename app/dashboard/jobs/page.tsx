@@ -112,6 +112,14 @@ export default function JobManagementPage() {
 
   const routeForm = useForm({
     resolver: zodResolver(createRouteSchema),
+    defaultValues: {
+      name: '',
+      pointA: '',
+      pointB: '',
+      operatingDays: [] as string[],
+      operatingHoursStart: '',
+      operatingHoursEnd: '',
+    },
   })
 
   const fetchRoutes = useCallback(async () => {
@@ -313,9 +321,11 @@ export default function JobManagementPage() {
   }
 
   const toggleDay = (day: string) => {
-    setSelectedDays((prev) =>
-      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]
-    )
+    setSelectedDays((prev) => {
+      const newDays = prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]
+      routeForm.setValue('operatingDays', newDays)
+      return newDays
+    })
   }
 
   const openJobCreate = () => {
