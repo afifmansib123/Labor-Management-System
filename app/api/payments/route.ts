@@ -83,13 +83,45 @@ export async function GET(req: NextRequest) {
         select: 'uniqueId name level salary photo providedBy',
         populate: [
           { path: 'level', select: 'levelName baseSalary' },
-          { path: 'providedBy', select: 'companyName', model: 'Partner', strictPopulate: false },
         ],
       })
       .populate('paidBy', 'email')
       .sort({ dueDate: -1 })
       .skip((page - 1) * limit)
       .limit(limit)
+      .lean()
+
+    // Manually handle providedBy population since it can be 'masteradmin' string or ObjectId
+    const partnerIds = payments
+      .filter((p) => p.employeeId?.providedBy && p.employeeId.providedBy !== 'masteradmin' && mongoose.Types.ObjectId.isValid(p.employeeId.providedBy.toString()))
+      .map((p) => p.employeeId.providedBy)
+
+    const partners = partnerIds.length > 0
+      ? await Partner.find({ _id: { $in: partnerIds } }).select('companyName').lean()
+      : []
+
+    const partnerMap = new Map(partners.map((p) => [p._id.toString(), p]))
+
+    const paymentsWithProvider = payments.map((payment) => {
+      if (!payment.employeeId) return payment
+      if (payment.employeeId.providedBy === 'masteradmin') {
+        return {
+          ...payment,
+          employeeId: {
+            ...payment.employeeId,
+            providedBy: { _id: 'masteradmin', companyName: 'Master Admin' }
+          }
+        }
+      }
+      const partner = partnerMap.get(payment.employeeId.providedBy?.toString())
+      return {
+        ...payment,
+        employeeId: {
+          ...payment.employeeId,
+          providedBy: partner || payment.employeeId.providedBy
+        }
+      }
+    })
 
     const paymentsByDate = await Payment.aggregate([
       { $match: query },
@@ -107,7 +139,7 @@ export async function GET(req: NextRequest) {
     ])
 
     return NextResponse.json({
-      payments,
+      payments: paymentsWithProvider,
       paymentsByDate,
       pagination: {
         page,
