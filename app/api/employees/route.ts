@@ -119,9 +119,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    if (!session.user?.id) {
+      return NextResponse.json({ error: 'Session user ID is missing' }, { status: 401 })
+    }
+
     await dbConnect()
 
-    const body = await req.json()
+    let body
+    try {
+      body = await req.json()
+    } catch (parseError) {
+      console.error('JSON parse error:', parseError)
+      return NextResponse.json({ error: 'Invalid JSON in request body' }, { status: 400 })
+    }
     const validated = createEmployeeSchema.parse(body)
 
     const existingEmployee = await Employee.findOne({ uniqueId: validated.uniqueId })
