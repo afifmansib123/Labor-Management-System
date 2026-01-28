@@ -73,18 +73,32 @@ export async function GET(req: NextRequest) {
     const total = await Employee.countDocuments(query)
     const employees = await Employee.find(query)
       .populate('level', 'levelName baseSalary')
-      .populate({
-        path: 'providedBy',
-        select: 'companyName',
-        model: 'Partner',
-        strictPopulate: false,
-      })
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit)
+      .lean()
+
+    // Manually handle providedBy population since it can be 'masteradmin' string or ObjectId
+    const partnerIds = employees
+      .filter((emp) => emp.providedBy && emp.providedBy !== 'masteradmin' && mongoose.Types.ObjectId.isValid(emp.providedBy.toString()))
+      .map((emp) => emp.providedBy)
+
+    const partners = partnerIds.length > 0
+      ? await Partner.find({ _id: { $in: partnerIds } }).select('companyName').lean()
+      : []
+
+    const partnerMap = new Map(partners.map((p) => [p._id.toString(), p]))
+
+    const employeesWithProvider = employees.map((emp) => {
+      if (emp.providedBy === 'masteradmin') {
+        return { ...emp, providedBy: { _id: 'masteradmin', companyName: 'Master Admin' } }
+      }
+      const partner = partnerMap.get(emp.providedBy?.toString())
+      return { ...emp, providedBy: partner || emp.providedBy }
+    })
 
     return NextResponse.json({
-      employees,
+      employees: employeesWithProvider,
       pagination: {
         page,
         limit,
