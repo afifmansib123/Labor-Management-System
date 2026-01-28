@@ -241,13 +241,28 @@ export default function WorkforcePage() {
   const onEmployeeSubmit = async (data: EmployeeFormData) => {
     setIsSubmitting(true)
     try {
+      // Validate details JSON if provided
+      let parsedDetails
+      if (data.details) {
+        try {
+          parsedDetails = JSON.parse(data.details)
+        } catch {
+          throw new Error('Additional Details must be valid JSON')
+        }
+      }
+
+      // Validate photo is a URL not raw data
+      if (employeePhoto && !employeePhoto.startsWith('http')) {
+        throw new Error('Photo must be uploaded via Cloudinary')
+      }
+
       const payload = {
         uniqueId: data.uniqueId,
         name: data.name,
         levelId: data.levelId,
         salary: parseFloat(data.salary),
         nid: data.nid,
-        details: data.details ? JSON.parse(data.details) : undefined,
+        details: parsedDetails,
         photo: employeePhoto || undefined,
       }
 
@@ -258,8 +273,15 @@ export default function WorkforcePage() {
           body: JSON.stringify(payload),
         })
         if (!res.ok) {
-          const err = await res.json()
-          throw new Error(err.error || 'Failed to update employee')
+          const text = await res.text()
+          let errorMsg = 'Failed to update employee'
+          try {
+            const err = JSON.parse(text)
+            errorMsg = err.error || errorMsg
+          } catch {
+            console.error('Server response:', text)
+          }
+          throw new Error(errorMsg)
         }
         success('Employee updated successfully')
       } else {
@@ -269,8 +291,15 @@ export default function WorkforcePage() {
           body: JSON.stringify(payload),
         })
         if (!res.ok) {
-          const err = await res.json()
-          throw new Error(err.error || 'Failed to create employee')
+          const text = await res.text()
+          let errorMsg = 'Failed to create employee'
+          try {
+            const err = JSON.parse(text)
+            errorMsg = err.error || errorMsg
+          } catch {
+            console.error('Server response:', text)
+          }
+          throw new Error(errorMsg)
         }
         success('Employee created successfully')
       }
